@@ -6,13 +6,18 @@ uses [Gin](https://github.com/gin-gonic/gin)
 * install go
 * install packages
 * go run api.go
+  
+## Features
+* Add message
+* Edit message
+* Delete message
+* Get all messages
 ## TODO
 * Test cases
-* Delete message
-* Edit message
-* Get all messages
+  * API
+  * Unit test
+* Authentication
   
 ### OPTIONAL
-* Authentication
 * Frontend
 * Dockerfile
