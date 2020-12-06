@@ -174,15 +174,12 @@ func getUserFromSession(c *gin.Context) (User, error) {
 func getUserIdFromSession(c *gin.Context) (int64, error) {
 	session := sessions.Default(c)
 	if userId := session.Get(userkey); userId == nil {
-		fmt.Println("userkey", userId)
 		return -1, fmt.Errorf("Unathorized")
 	} else {
-		fmt.Println("useridnil", userId)
 		return userId.(int64), nil
 	}
 }
 func authHandler(c *gin.Context) {
-	fmt.Println("authhandler")
 	if _, err := getUserIdFromSession(c); err != nil {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 	} else {
@@ -202,14 +199,13 @@ func signin(c *gin.Context) {
 		c.JSON(http.StatusMethodNotAllowed, gin.H{"error": "Sign out first"})
 	} else if user, err := getUserByUsername(username); err == nil && password == user.passsword {
 		session := sessions.Default(c)
-		fmt.Println("signed in ", user)
 		session.Set(userkey, user.Id)
 		sessionError := session.Save()
 		if sessionError != nil {
-			fmt.Println(sessionError.Error())
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		} else {
+			c.JSON(http.StatusOK, gin.H{"message": "signed in"})
 		}
-
-		c.JSON(http.StatusOK, gin.H{"message": "signed in"})
 	} else {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "The username and password did not match"})
 	}
