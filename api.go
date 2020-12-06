@@ -176,12 +176,18 @@ func signin(c *gin.Context) {
 	}
 
 }
-func createUser(username string, password string) User {
+func createUser(username string, password string) (User, error) {
+	if len(username) == 0 || len(password) == 0 {
+		return User{}, fmt.Errorf("Username and password are required")
+	} else if _, exists := _usernames[username]; exists {
+		return User{}, fmt.Errorf("User already exists")
+	}
 	seq := getSequenceNumber()
 	user := User{seq, username, password}
 	_users[seq] = user
 	_usernames[username] = seq
-	return user
+	return user, nil
+
 }
 func deleteUser(userId int64) {
 	if user, err := getUserById(userId); err == nil {
@@ -194,10 +200,13 @@ func signup(c *gin.Context) {
 	password := c.PostForm("password")
 	if _, err := getUserIdFromSession(c); err == nil {
 		c.JSON(http.StatusPreconditionFailed, gin.H{"error": "Sign out first"})
-	} else if _, err := getUserByUsername(username); err == nil {
-		c.JSON(http.StatusConflict, gin.H{"error": "User already exists"})
+	} else if len(username) == 0 {
+		c.JSON(http.StatusPreconditionRequired, gin.H{"error": "Username cannot be empty"})
+	} else if len(password) == 0 {
+		c.JSON(http.StatusPreconditionRequired, gin.H{"error": "Password cannot be empty"})
+	} else if user, err := createUser(username, password); err != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "Cannot create user"})
 	} else {
-		user := createUser(username, password)
 		c.JSON(http.StatusOK, gin.H{"message": "user created", "user": user})
 	}
 
