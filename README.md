@@ -18,6 +18,7 @@ uses [Gin](https://github.com/gin-gonic/gin)
 * Delete message
 * Get all messages
 * Authentication
+* Delete user and all their messages
 ## TODO
 * Test cases
   * API
