@@ -22,7 +22,6 @@ uses [Gin](https://github.com/gin-gonic/gin)
 * Test cases
   * API
   * Unit test
-* HTTP status codes
   
 ### OPTIONAL
 * Frontend
