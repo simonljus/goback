@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -11,8 +10,6 @@ import (
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 )
-
-const userkey = "user"
 
 type User struct {
 	Id        int64  `json:"id"`
@@ -34,27 +31,35 @@ type MessageDTO struct {
 	UserId int64  `json:"userId" form:"userId" binding:"required"`
 }
 
-func (user *User) toDTO() UserDTO {
-	return UserDTO{Id: user.Id, Username: user.Username}
-}
-
-func (message *Message) toDTO(userId int64) MessageDTO {
-	var showId int64
-	if message.userId == userId {
-		showId = userId
-	}
-	return MessageDTO{Id: message.Id, Text: message.Text, UserId: showId}
-}
-
 const PUBLICUSER = int64(0)
+const userkey = "user"
 
 var _seq = int64(0)
 var _usernames = make(map[string]int64)
 var _users = make(map[int64]User)
 var _messages = make(map[int64]Message)
 
+func reset() {
+	_seq = int64(0)
+	_usernames = make(map[string]int64)
+	_users = make(map[int64]User)
+	_messages = make(map[int64]Message)
+}
+
+func (user *User) toDTO() UserDTO {
+	return UserDTO{Id: user.Id, Username: user.Username}
+}
+
+func (message *Message) toDTO(userId int64) MessageDTO {
+	showId := int64(-1)
+	if message.userId == userId {
+		showId = userId
+	}
+	return MessageDTO{Id: message.Id, Text: message.Text, UserId: showId}
+}
+
 func getSequenceNumber() int64 {
-	_seq = _seq + 1
+	_seq += 1
 	return _seq
 }
 func getUserByUsername(username string) (User, error) {
@@ -71,11 +76,11 @@ func getUserById(userId int64) (User, error) {
 		return user, nil
 	}
 }
-func createMessage(userId int64, text string) MessageDTO {
+func createMessage(userId int64, text string) Message {
 	seq := getSequenceNumber()
 	m := Message{Id: seq, Text: text, userId: userId}
 	_messages[seq] = m
-	return m.toDTO(userId)
+	return m
 }
 func getMessages(userId int64) []MessageDTO {
 	mArray := make([]MessageDTO, 0, len(_messages))
@@ -93,18 +98,18 @@ func getMessageById(messageId int64) (Message, error) {
 }
 func getUserMessage(userId, messageId int64) (Message, error) {
 	if message, err := getMessageById(messageId); err != nil {
-		if message.userId == userId {
-			return message, nil
-		}
+		return Message{}, err
+	} else if message.userId != userId {
+		return Message{}, fmt.Errorf("Message is made by another user")
+	} else {
+		return message, nil
 	}
-	return Message{}, errors.New(fmt.Sprintf("message %d does not exist", messageId))
 }
 func deleteMessageWithId(messageId int64) {
 	delete(_messages, messageId)
 }
 func deleteMessage(userId, messageId int64) error {
-	message, err := getMessageById(messageId)
-	if err != nil {
+	if message, err := getMessageById(messageId); err != nil {
 		return nil
 	} else if message.userId != userId {
 		return fmt.Errorf("Not authorized to delte message")
@@ -114,15 +119,49 @@ func deleteMessage(userId, messageId int64) error {
 	}
 
 }
-func editMessage(dto MessageDTO) (MessageDTO, error) {
+func updateMessage(dto MessageDTO) (Message, error) {
 	if message, err := getUserMessage(dto.UserId, dto.Id); err != nil {
-		return MessageDTO{}, err
+		return Message{}, err
 	} else {
 		message.Text = dto.Text
-		_messages[dto.Id] = message
-		return dto, nil
+		_messages[message.Id] = message
+		return message, nil
 	}
 }
+
+func createUser(username string, password string) (User, error) {
+	if len(username) == 0 || len(password) == 0 {
+		return User{}, fmt.Errorf("Username and password are required")
+	} else if _, exists := _usernames[username]; exists {
+		return User{}, fmt.Errorf("User already exists")
+	}
+	seq := getSequenceNumber()
+	user := User{seq, username, password}
+	_users[seq] = user
+	_usernames[username] = seq
+	return user, nil
+
+}
+func deleteUser(userId int64) {
+	if user, err := getUserById(userId); err == nil {
+		delete(_users, userId)
+		delete(_usernames, user.Username)
+	}
+}
+
+func getMessagesByUser(userId int64) []Message {
+	messages := []Message{}
+
+	return messages
+}
+func deleteMessagesByUser(userId int64) {
+	for messageId, message := range _messages {
+		if message.userId == userId {
+			deleteMessageWithId(messageId)
+		}
+	}
+}
+
 func getUserFromSession(c *gin.Context) (User, error) {
 	if userId, err := getUserIdFromSession(c); err != nil {
 		return User{}, err
@@ -176,25 +215,7 @@ func signin(c *gin.Context) {
 	}
 
 }
-func createUser(username string, password string) (User, error) {
-	if len(username) == 0 || len(password) == 0 {
-		return User{}, fmt.Errorf("Username and password are required")
-	} else if _, exists := _usernames[username]; exists {
-		return User{}, fmt.Errorf("User already exists")
-	}
-	seq := getSequenceNumber()
-	user := User{seq, username, password}
-	_users[seq] = user
-	_usernames[username] = seq
-	return user, nil
 
-}
-func deleteUser(userId int64) {
-	if user, err := getUserById(userId); err == nil {
-		delete(_users, userId)
-		delete(_usernames, user.Username)
-	}
-}
 func signup(c *gin.Context) {
 	username := c.PostForm("username")
 	password := c.PostForm("password")
@@ -211,18 +232,7 @@ func signup(c *gin.Context) {
 	}
 
 }
-func getMessagesByUser(userId int64) []Message {
-	messages := []Message{}
 
-	return messages
-}
-func deleteMessagesByUser(userId int64) {
-	for messageId, message := range _messages {
-		if message.userId == userId {
-			deleteMessageWithId(messageId)
-		}
-	}
-}
 func getMe(c *gin.Context) {
 	user, err := getUserFromSession(c)
 	if err != nil {
@@ -277,7 +287,7 @@ func createEngine() *gin.Engine {
 		// already caught by middleware
 		userId, _ := getUserIdFromSession(c)
 		message := createMessage(userId, messageText)
-		c.JSON(http.StatusCreated, message)
+		c.JSON(http.StatusCreated, message.toDTO(userId))
 	})
 	authorizedMessage.PUT("/:messageid/:message", func(c *gin.Context) {
 		userId, _ := getUserIdFromSession(c)
@@ -285,10 +295,10 @@ func createEngine() *gin.Engine {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "A valid message Id is required"})
 		} else if text := c.Param("message"); len(text) != 0 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "A valid message is required"})
-		} else if message, messageError := editMessage(MessageDTO{id, text, userId}); messageError != nil {
+		} else if message, messageError := updateMessage(MessageDTO{id, text, userId}); messageError != nil {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Cannot edit message"})
 		} else {
-			c.JSON(http.StatusOK, gin.H{"message": message})
+			c.JSON(http.StatusOK, gin.H{"message": message.toDTO(userId)})
 		}
 	})
 	authorizedMessage.DELETE("/:messageid/", func(c *gin.Context) {

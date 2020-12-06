@@ -9,21 +9,24 @@ uses [Gin](https://github.com/gin-gonic/gin)
 
 # How to run
 * install go
-* install packages
-* go run api.go
+* install dependencies
+* `go run api.go`
+* `go test` for testing
   
 ## Features
+* Get all messages
 * Add message
 * Edit message
 * Delete message
-* Get all messages
 * Authentication
-* Delete user and all their messages
+  * signup
+  * signin
+  * signout
+  * Delete user and all their messages
 ## TODO
 * Test cases
   * API
-  * Unit test
-  
-### OPTIONAL
+* Easier install and deploy
+  * Go module for installing dependencies
+  * Dockerfile 
 * Frontend
-* Dockerfile

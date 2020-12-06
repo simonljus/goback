@@ -11,13 +11,42 @@ func TestGetMessages(t *testing.T) {
 		t.Errorf("Messages shold be empty")
 	}
 }
-func TestCreateMessage(t *testing.T) {
-	dto := testCreateMessage(t, int64(42), "hello world")
-	dto2 := testCreateMessage(t, int64(1337), "hello worlds")
-	if dto.Id == dto2.Id {
-		t.Errorf("Expected messageId to not match %d and %d", dto.Id, dto2.Id)
-	}
+func TestCRUDMessages(t *testing.T) {
 
+	message := testCreateMessage(t, int64(42), "hello world")
+	message2 := testCreateMessage(t, int64(1337), "hello worlds")
+	if message.Id == message2.Id {
+		t.Errorf("Expected messageId to not match %d and %d", message.Id, message2.Id)
+	}
+	if foundMessage, messageNotFoundErr := getMessageById(message.Id); messageNotFoundErr != nil {
+		t.Errorf("Expected message to be found %d, has error %s", message.Id, messageNotFoundErr.Error())
+	} else if foundMessage.Id != message.Id {
+		t.Errorf("Expected messageId to match expected %d, actual %d", message.Id, foundMessage.Id)
+	}
+	testUpdateMessage(t, message)
+	testDeleteMessage(t, message)
+
+}
+
+func testUpdateMessage(t *testing.T, message Message) {
+	updatedText := "EDIT"
+	if updated, updatedError := updateMessage(MessageDTO{Id: message.Id, Text: updatedText, UserId: message.userId}); updatedError != nil {
+		t.Errorf("Expected update, but got error %s, %#v", updatedError.Error(), message)
+	} else if updated.Id != message.Id {
+		t.Errorf("Expected message update, got different ids, expected %d got %d", message.Id, updated.Id)
+	} else if updated.Text != updatedText {
+		t.Errorf("Expected text update, got same text, expected %s got %s", updatedText, updated.Text)
+	}
+}
+func testDeleteMessage(t *testing.T, message Message) {
+	createMessage(message.userId, message.Text)
+	nMessages := len(getMessages(0))
+	deleteMessageWithId(message.Id)
+	lessMessages := len(getMessages(0))
+	if nMessages-lessMessages != 1 {
+		fmt.Println(getMessages(0))
+		t.Errorf("Expected one message to be removed, from %d to %d", nMessages, lessMessages)
+	}
 }
 func TestCreateUser(t *testing.T) {
 	username := "hi"
@@ -44,25 +73,40 @@ func TestCreateUser(t *testing.T) {
 		t.Errorf("Expected messageId to not match %d and %d", user.Id, otherUser.Id)
 	}
 }
-func TestDeleteMessage(t *testing.T) {
-	dto := createMessage(42, "hello")
-	createMessage(42, "hello")
-	nMessages := len(getMessages(0))
-	deleteMessageWithId(dto.Id)
-	lessMessages := len(getMessages(0))
-	if nMessages-lessMessages != 1 {
-		fmt.Println(getMessages(0))
-		t.Errorf("Expected one message to be removed, from %d to %d", nMessages, lessMessages)
+func TestGetUserByFunctions(t *testing.T) {
+	username := "TestGetUserBy"
+	user, _ := createUser(username, "password")
+
+	if foundUser, getUserErr := getUserById(user.Id); getUserErr != nil || foundUser.Id != user.Id {
+		t.Errorf("Expected to retrieve the same user as created expected %d actual %d", user.Id, foundUser.Id)
+	}
+	if noUser, noUserErr := getUserById(8080); noUserErr == nil {
+		t.Errorf("User does not exist, found %d ", noUser.Id)
+	}
+	if usernameUser, usernameErr := getUserByUsername(username); usernameErr != nil {
+		t.Errorf("User was not found by username %s ", usernameErr.Error())
+
+	} else if usernameUser.Id != user.Id {
+		t.Errorf("User was not the expected %d, actual %d ", user.Id, usernameUser.Id)
 	}
 }
-func testCreateMessage(t *testing.T, userId int64, text string) MessageDTO {
-	dto := createMessage(userId, text)
-	if dto.UserId != userId {
-		t.Errorf("Expected userId %d, actual %d", userId, dto.UserId)
+
+func TestDeleteUser(t *testing.T) {
+	user, _ := createUser("testDelete", "password")
+	deleteUser(user.Id)
+	if removedUser, notFoundError := getUserById(user.Id); notFoundError == nil {
+		t.Errorf("User still exists  %#v", removedUser)
 	}
-	if dto.Text != text {
-		t.Errorf("Expected text to be %s, actual %s", text, dto.Text)
+}
+
+func testCreateMessage(t *testing.T, userId int64, text string) Message {
+	message := createMessage(userId, text)
+	if message.userId != userId {
+		t.Errorf("Expected userId %d, actual %d", userId, message.userId)
 	}
-	return dto
+	if message.Text != text {
+		t.Errorf("Expected text to be %s, actual %s", text, message.Text)
+	}
+	return message
 
 }
