@@ -241,6 +241,18 @@ func getMe(c *gin.Context) {
 	}
 
 }
+func updateMessageReq(c *gin.Context) {
+	userId, _ := getUserIdFromSession(c)
+	if id, err := strconv.ParseInt(c.Param("messageid"), 10, 64); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "A valid message Id is required"})
+	} else if text := c.Param("message"); len(text) != 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "A valid message is required"})
+	} else if message, messageError := updateMessage(MessageDTO{id, text, userId}); messageError != nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Cannot edit message"})
+	} else {
+		c.JSON(http.StatusOK, gin.H{"message": message.toDTO(userId)})
+	}
+}
 func deleteMe(c *gin.Context) {
 	// already checked by middleware
 	userId, _ := getUserIdFromSession(c)
@@ -253,6 +265,7 @@ func deleteMe(c *gin.Context) {
 func createEngine() *gin.Engine {
 	r := gin.New()
 	store := cookie.NewStore([]byte(fmt.Sprintf("secret%d", time.Now().Unix())))
+	store.Options(sessions.Options{HttpOnly: true})
 	r.Use(sessions.Sessions("mysession", store))
 	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
@@ -272,7 +285,7 @@ func createEngine() *gin.Engine {
 		messages := getMessages(userId)
 		c.JSON(http.StatusOK, messages)
 	})
-	authorizedMe := r.Group("/me/")
+	authorizedMe := r.Group("/me")
 	authorizedMe.Use(authHandler)
 	authorizedMe.DELETE("", deleteMe)
 	authorizedMe.GET("", getMe)
@@ -285,19 +298,8 @@ func createEngine() *gin.Engine {
 		message := createMessage(userId, messageText)
 		c.JSON(http.StatusCreated, message.toDTO(userId))
 	})
-	authorizedMessage.PUT("/:messageid/:message", func(c *gin.Context) {
-		userId, _ := getUserIdFromSession(c)
-		if id, err := strconv.ParseInt(c.Param("messageid"), 10, 64); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "A valid message Id is required"})
-		} else if text := c.Param("message"); len(text) != 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "A valid message is required"})
-		} else if message, messageError := updateMessage(MessageDTO{id, text, userId}); messageError != nil {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Cannot edit message"})
-		} else {
-			c.JSON(http.StatusOK, gin.H{"message": message.toDTO(userId)})
-		}
-	})
-	authorizedMessage.DELETE("/:messageid/", func(c *gin.Context) {
+	authorizedMessage.PUT("/:messageid/:message", updateMessageReq)
+	authorizedMessage.DELETE("/:messageid", func(c *gin.Context) {
 		userId, _ := getUserIdFromSession(c)
 		if id, err := strconv.ParseInt(c.Param("messageid"), 10, 64); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "A valid message Id is required"})

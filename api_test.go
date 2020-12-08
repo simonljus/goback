@@ -2,7 +2,11 @@ package main
 
 import (
 	"fmt"
+	"net/http"
 	"testing"
+	"time"
+
+	"github.com/steinfletcher/apitest"
 )
 
 func TestGetMessages(t *testing.T) {
@@ -108,5 +112,136 @@ func testCreateMessage(t *testing.T, userId int64, text string) Message {
 		t.Errorf("Expected text to be %s, actual %s", text, message.Text)
 	}
 	return message
+
+}
+func TestGetNotFound(t *testing.T) {
+	apitest.New().
+		Handler(createEngine()).
+		Get("/pathdoesnotexist").
+		Expect(t).
+		Status(http.StatusNotFound).
+		End()
+}
+
+func TestReqGetMessages(t *testing.T) {
+	apitest.New().
+		Handler(createEngine()).
+		Get("/messages").
+		Expect(t).
+		Status(http.StatusOK).
+		End()
+}
+func TestSignIn(t *testing.T) {
+	engine := createEngine()
+	apitest.New().
+		Handler(engine).
+		Post("/signup").
+		FormData("username", "auser").
+		FormData("password", "password").
+		Expect(t).
+		Status(http.StatusOK).
+		End()
+
+	apitest.New().
+		Handler(engine).
+		Post("/signin").
+		Expect(t).
+		Status(http.StatusUnauthorized).
+		Body(`{"error": "The username and password did not match"}`).
+		End()
+
+	apitest.New().
+		Handler(engine).
+		Post("/signin").
+		FormData("username", "auser").
+		FormData("password", "wrongpassword").
+		Expect(t).
+		Status(http.StatusUnauthorized).
+		Body(`{"error": "The username and password did not match"}`).
+		End()
+	apitest.New().
+		Handler(engine).
+		Post("/signin").
+		FormData("username", "auser").
+		FormData("password", "password").
+		Expect(t).
+		Status(http.StatusOK).
+		End()
+	apitest.New().
+		Handler(engine).
+		Get("/me").
+		Expect(t).
+		Status(http.StatusOK).
+		End()
+	// signing in again when signed in
+	time.Sleep(2 * time.Second)
+	apitest.New().
+		Handler(engine).
+		Post("/signin").
+		FormData("username", "auser").
+		FormData("password", "password").
+		Expect(t).
+		Status(http.StatusMethodNotAllowed).
+		End()
+}
+
+func TestWithoutCookie(t *testing.T) {
+	engine := createEngine()
+	apitest.New().
+		Handler(engine).
+		Post("/signup").
+		FormData("username", "auser").
+		FormData("password", "password").
+		Expect(t).
+		Status(http.StatusOK).
+		End()
+
+	apitest.New().
+		Handler(engine).
+		Post("/signin").
+		FormData("username", "auser").
+		FormData("password", "password").
+		Expect(t).
+		Status(http.StatusOK).
+		End()
+
+	apitest.New().
+		Handler(engine).
+		Get("/me").
+		Expect(t).
+		Status(http.StatusUnauthorized).
+		End()
+}
+
+func extractCookie(result apitest.Result) *http.Cookie {
+	cookie := result.Response.Cookies()[0]
+	return cookie
+}
+func TestWithCookie(t *testing.T) {
+	engine := createEngine()
+	apitest.New().
+		Handler(engine).
+		Post("/signup").
+		FormData("username", "auser").
+		FormData("password", "password").
+		Expect(t).
+		Status(http.StatusOK).
+		End()
+	result := apitest.New().
+		Handler(engine).
+		Post("/signin").
+		FormData("username", "auser").
+		FormData("password", "password").
+		Expect(t).
+		Status(http.StatusOK).
+		End()
+	cookie := extractCookie(result)
+	apitest.New().
+		Handler(engine).
+		Get("/me").
+		Cookie(cookie.Name, cookie.Value).
+		Expect(t).
+		Status(http.StatusOK).
+		End()
 
 }
