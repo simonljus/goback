@@ -7,6 +7,8 @@ uses [Gin](https://github.com/gin-gonic/gin)
 
 * [following auth example](https://github.com/Depado/gin-auth-example/blob/master/main.go)
 
+## Test
+* [steinfletcher/apitest](https://github.com/steinfletcher/apitest) for testing API requests and responses
 # How to run
 * install go
 * install dependencies
