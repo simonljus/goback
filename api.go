@@ -187,12 +187,12 @@ func authHandler(c *gin.Context) {
 	}
 
 }
-func signout(c *gin.Context) {
+func signoutReq(c *gin.Context) {
 	session := sessions.Default(c)
 	session.Clear()
 	c.JSON(http.StatusNoContent, gin.H{"message": "Signed out"})
 }
-func signin(c *gin.Context) {
+func signinReq(c *gin.Context) {
 	username := c.PostForm("username")
 	password := c.PostForm("password")
 	if _, err := getUserIdFromSession(c); err == nil {
@@ -212,7 +212,7 @@ func signin(c *gin.Context) {
 
 }
 
-func signup(c *gin.Context) {
+func signupReq(c *gin.Context) {
 	username := c.PostForm("username")
 	password := c.PostForm("password")
 	if _, err := getUserIdFromSession(c); err == nil {
@@ -229,7 +229,7 @@ func signup(c *gin.Context) {
 
 }
 
-func getMe(c *gin.Context) {
+func getUserReq(c *gin.Context) {
 	user, err := getUserFromSession(c)
 	if err != nil {
 		// can happen if multiple users uses the same user and one removes it
@@ -245,15 +245,15 @@ func updateMessageReq(c *gin.Context) {
 	userId, _ := getUserIdFromSession(c)
 	if id, err := strconv.ParseInt(c.Param("messageid"), 10, 64); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "A valid message Id is required"})
-	} else if text := c.Param("message"); len(text) != 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "A valid message is required"})
+	} else if text := c.PostForm("message"); len(text) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "A valid message text is required"})
 	} else if message, messageError := updateMessage(MessageDTO{id, text, userId}); messageError != nil {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Cannot edit message"})
 	} else {
 		c.JSON(http.StatusOK, gin.H{"message": message.toDTO(userId)})
 	}
 }
-func deleteMe(c *gin.Context) {
+func deleteUserReq(c *gin.Context) {
 	// already checked by middleware
 	userId, _ := getUserIdFromSession(c)
 	session := sessions.Default(c)
@@ -262,53 +262,65 @@ func deleteMe(c *gin.Context) {
 	deleteUser(userId)
 	c.JSON(http.StatusNoContent, gin.H{"message": "Deleted"})
 }
+func getMessagesReq(c *gin.Context) {
+	var userId = int64(0)
+	sessionUserId, err := getUserIdFromSession(c)
+	if err == nil {
+		userId = sessionUserId
+	}
+	messages := getMessages(userId)
+	c.JSON(http.StatusOK, messages)
+}
+func createMessageReq(c *gin.Context) {
+	messageText := c.PostForm("message")
+	if len(messageText) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "A valid message is required"})
+		return
+	}
+
+	// already caught by middleware
+	userId, _ := getUserIdFromSession(c)
+	message := createMessage(userId, messageText)
+	c.JSON(http.StatusCreated, message.toDTO(userId))
+}
+func deleteMessageReq(c *gin.Context) {
+	userId, _ := getUserIdFromSession(c)
+	if id, err := strconv.ParseInt(c.Param("messageid"), 10, 64); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "A valid message Id is required"})
+	} else if err := deleteMessage(userId, id); err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Cannot delete message"})
+	} else {
+		c.JSON(http.StatusNoContent, gin.H{"message": "Message does not exist"})
+	}
+}
+func pingReq(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"message": "General Kenobi"})
+}
+func getSecret() string {
+	return fmt.Sprintf("secret%d", time.Now().Unix())
+}
 func createEngine() *gin.Engine {
 	r := gin.New()
-	store := cookie.NewStore([]byte(fmt.Sprintf("secret%d", time.Now().Unix())))
+	store := cookie.NewStore([]byte(getSecret()))
 	store.Options(sessions.Options{HttpOnly: true})
 	r.Use(sessions.Sessions("mysession", store))
 	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
-	r.GET("/hellothere", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "General Kenobi"})
-	})
-	r.POST("/signin", signin)
-	r.POST("/signup", signup)
-	r.POST("/signout", signout)
+	r.GET("/hellothere", pingReq)
+	r.POST("/signin", signinReq)
+	r.POST("/signup", signupReq)
+	r.POST("/signout", signoutReq)
 
-	r.GET("/messages", func(c *gin.Context) {
-		var userId = int64(0)
-		sessionUserId, err := getUserIdFromSession(c)
-		if err == nil {
-			userId = sessionUserId
-		}
-		messages := getMessages(userId)
-		c.JSON(http.StatusOK, messages)
-	})
+	r.GET("/messages", getMessagesReq)
 	authorizedMe := r.Group("/me")
 	authorizedMe.Use(authHandler)
-	authorizedMe.DELETE("", deleteMe)
-	authorizedMe.GET("", getMe)
+	authorizedMe.DELETE("", deleteUserReq)
+	authorizedMe.GET("", getUserReq)
 	authorizedMessage := r.Group("/message")
 	authorizedMessage.Use(authHandler)
-	authorizedMessage.POST("/:message", func(c *gin.Context) {
-		messageText := c.Param("message")
-		// already caught by middleware
-		userId, _ := getUserIdFromSession(c)
-		message := createMessage(userId, messageText)
-		c.JSON(http.StatusCreated, message.toDTO(userId))
-	})
-	authorizedMessage.PUT("/:messageid/:message", updateMessageReq)
-	authorizedMessage.DELETE("/:messageid", func(c *gin.Context) {
-		userId, _ := getUserIdFromSession(c)
-		if id, err := strconv.ParseInt(c.Param("messageid"), 10, 64); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "A valid message Id is required"})
-		} else if err := deleteMessage(userId, id); err != nil {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Cannot delete message"})
-		} else {
-			c.JSON(http.StatusNoContent, gin.H{"message": "Message does not exist"})
-		}
-	})
+	authorizedMessage.POST("", createMessageReq)
+	authorizedMessage.PUT("/:messageid", updateMessageReq)
+	authorizedMessage.DELETE("/:messageid", deleteMessageReq)
 	return r
 }
 func main() {

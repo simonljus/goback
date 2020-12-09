@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
-	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/steinfletcher/apitest"
 )
 
@@ -114,6 +114,7 @@ func testCreateMessage(t *testing.T, userId int64, text string) Message {
 	return message
 
 }
+
 func TestGetNotFound(t *testing.T) {
 	apitest.New().
 		Handler(createEngine()).
@@ -167,44 +168,11 @@ func TestSignIn(t *testing.T) {
 		Expect(t).
 		Status(http.StatusOK).
 		End()
-	apitest.New().
-		Handler(engine).
-		Get("/me").
-		Expect(t).
-		Status(http.StatusOK).
-		End()
-	// signing in again when signed in
-	time.Sleep(2 * time.Second)
-	apitest.New().
-		Handler(engine).
-		Post("/signin").
-		FormData("username", "auser").
-		FormData("password", "password").
-		Expect(t).
-		Status(http.StatusMethodNotAllowed).
-		End()
 }
 
 func TestWithoutCookie(t *testing.T) {
 	engine := createEngine()
-	apitest.New().
-		Handler(engine).
-		Post("/signup").
-		FormData("username", "auser").
-		FormData("password", "password").
-		Expect(t).
-		Status(http.StatusOK).
-		End()
-
-	apitest.New().
-		Handler(engine).
-		Post("/signin").
-		FormData("username", "auser").
-		FormData("password", "password").
-		Expect(t).
-		Status(http.StatusOK).
-		End()
-
+	createAndSignIn(t, engine, "auser", "password")
 	apitest.New().
 		Handler(engine).
 		Get("/me").
@@ -219,23 +187,7 @@ func extractCookie(result apitest.Result) *http.Cookie {
 }
 func TestWithCookie(t *testing.T) {
 	engine := createEngine()
-	apitest.New().
-		Handler(engine).
-		Post("/signup").
-		FormData("username", "auser").
-		FormData("password", "password").
-		Expect(t).
-		Status(http.StatusOK).
-		End()
-	result := apitest.New().
-		Handler(engine).
-		Post("/signin").
-		FormData("username", "auser").
-		FormData("password", "password").
-		Expect(t).
-		Status(http.StatusOK).
-		End()
-	cookie := extractCookie(result)
+	cookie := createAndSignIn(t, engine, "auser", "password")
 	apitest.New().
 		Handler(engine).
 		Get("/me").
@@ -243,5 +195,157 @@ func TestWithCookie(t *testing.T) {
 		Expect(t).
 		Status(http.StatusOK).
 		End()
+	apitest.New().
+		Handler(engine).
+		Post("/signout").
+		Cookie(cookie.Name, cookie.Value).
+		Expect(t).
+		Status(http.StatusNoContent).
+		End()
 
+}
+func testMeReq(t *testing.T, engine *gin.Engine, cookie *http.Cookie) {
+	apitest.New().
+		Handler(engine).
+		Get("/me").
+		Cookie(cookie.Name, cookie.Value).
+		Expect(t).
+		Status(http.StatusOK).
+		End()
+}
+func testCreateMessageReq(t *testing.T, engine *gin.Engine, cookie *http.Cookie, dto MessageDTO) {
+	apitest.New().
+		Handler(engine).
+		Post("/message").
+		FormData("message", dto.Text).
+		Cookie(cookie.Name, cookie.Value).
+		Expect(t).
+		Status(http.StatusCreated).
+		Body(fmt.Sprintf(`{"id":%d,"text":"%s","userId":%d}`, dto.Id, dto.Text, dto.UserId)).
+		End()
+}
+
+func TestCreateMessageReq(t *testing.T) {
+	engine := createEngine()
+	cookie := createAndSignIn(t, engine, "auser", "password")
+	dto := MessageDTO{Text: "Hello world", Id: 2, UserId: 1}
+	testCreateMessageReq(t, engine, cookie, MessageDTO{Text: "Hello world", Id: 2, UserId: 1})
+
+	apitest.New().
+		Handler(engine).
+		Get("/messages").
+		Cookie(cookie.Name, cookie.Value).
+		Expect(t).
+		Status(http.StatusOK).
+		Body(fmt.Sprintf(`[{"id":%d,"text":"%s","userId":%d}]`, dto.Id, dto.Text, dto.UserId)).
+		End()
+
+	apitest.New().
+		Handler(engine).
+		Post("/signout").
+		Cookie(cookie.Name, cookie.Value).
+		Expect(t).
+		Status(http.StatusNoContent).
+		End()
+
+}
+func testDeleteMessageReqNoCoookie(t *testing.T, engine *gin.Engine, messageId int) {
+	apitest.New().
+		Handler(engine).
+		Delete(fmt.Sprint("/message/", messageId)).
+		Expect(t).
+		Status(http.StatusUnauthorized).
+		End()
+}
+func createAndSignIn(t *testing.T, engine *gin.Engine, username string, password string) *http.Cookie {
+	apitest.New().
+		Handler(engine).
+		Post("/signup").
+		FormData("username", "auser").
+		FormData("password", "password").
+		Expect(t).
+		End()
+	result := apitest.New().
+		Handler(engine).
+		Post("/signin").
+		FormData("username", "auser").
+		FormData("password", "password").
+		Expect(t).
+		End()
+	cookie := extractCookie(result)
+	return cookie
+}
+func apiCreateMessage(t *testing.T, engine *gin.Engine, cookie *http.Cookie, message string) {
+	apitest.New().
+		Handler(engine).
+		Post("/message").
+		FormData("message", message).
+		Cookie(cookie.Name, cookie.Value).
+		Expect(t).
+		End()
+}
+func testSignoutReq(t *testing.T, engine *gin.Engine, cookie *http.Cookie) {
+	apitest.New().
+		Handler(engine).
+		Post("/signout").
+		Cookie(cookie.Name, cookie.Value).
+		Expect(t).
+		Status(http.StatusNoContent).
+		End()
+}
+func TestDeleteMessageReq(t *testing.T) {
+	engine := createEngine()
+	cookie := createAndSignIn(t, engine, "auser", "password")
+	apiCreateMessage(t, engine, cookie, "Hello world")
+	testDeleteMessageReqNoCoookie(t, engine, 2)
+	apitest.New().
+		Handler(engine).
+		Delete("/message/2").
+		Cookie(cookie.Name, cookie.Value).
+		Expect(t).
+		Status(http.StatusNoContent).
+		End()
+
+	apitest.New().
+		Handler(engine).
+		Get("/messages").
+		Cookie(cookie.Name, cookie.Value).
+		Expect(t).
+		Status(http.StatusOK).
+		Body(`[]`).
+		End()
+	testSignoutReq(t, engine, cookie)
+}
+
+func TestUpdateMessageReq(t *testing.T) {
+	engine := createEngine()
+	cookie := createAndSignIn(t, engine, "auser", "password")
+	apiCreateMessage(t, engine, cookie, "Hello world")
+	updatedText := "UPDATED TEXT"
+	apitest.New().
+		Handler(engine).
+		Put("/message/3").
+		FormData("message", updatedText).
+		Cookie(cookie.Name, cookie.Value).
+		Expect(t).
+		Status(http.StatusForbidden).
+		End()
+	apitest.New().
+		Handler(engine).
+		Put("/message/2").
+		FormData("message", updatedText).
+		Cookie(cookie.Name, cookie.Value).
+		Expect(t).
+		Status(http.StatusOK).
+		End()
+
+	apitest.New().
+		Handler(engine).
+		Get("/messages").
+		Cookie(cookie.Name, cookie.Value).
+		Expect(t).
+		Status(http.StatusOK).
+		Body(fmt.Sprintf(`[{"id":%d,"text":"%s","userId":%d}]`, 2, updatedText, 1)).
+		End()
+	testSignoutReq(t, engine, cookie)
 }
