@@ -10,11 +10,10 @@ uses [Gin](https://github.com/gin-gonic/gin)
 ## Test
 * [steinfletcher/apitest](https://github.com/steinfletcher/apitest) for testing API requests and responses
 # How to run
-* install go
-* install dependencies
-* `go run api.go`
+* install go using preferred package manager
+* download dependencies `go mod downlad`
+* start server `go run api.go` found at localhost:PORTNUMBER (9001 as default)
 * `go test` for testing
-* found at localhost:PORTNUMBER (9001 as default)
   
 ## API
 | Description 	| Request type 	| path 	| urlparameter 	| formparameters 	| Requires authentication 	|
@@ -31,6 +30,5 @@ uses [Gin](https://github.com/gin-gonic/gin)
 | Forget me,delete user and my messages 	| DELETE 	| /me 	|  	|  	| true 	|
 ## TODO
 * Easier install and deploy
-  * Go module for installing dependencies
   * Dockerfile 
 * Frontend

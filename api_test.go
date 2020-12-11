@@ -52,7 +52,6 @@ func testDeleteMessage(t *testing.T, message Message) {
 	deleteMessageWithId(message.Id)
 	lessMessages := len(getMessages(0))
 	if nMessages-lessMessages != 1 {
-		fmt.Println(getMessages(0))
 		t.Errorf("Expected one message to be removed, from %d to %d", nMessages, lessMessages)
 	}
 }
@@ -159,15 +158,13 @@ func getIdFromResponse(resp http.Response) (int, error) {
 	body, _ := ioutil.ReadAll(resp.Body)
 	if arr := strings.Split(string(body), `"id":`); len(arr) > 1 {
 		idarr := strings.Split(arr[1], ",")
-		fmt.Println(fmt.Sprintf("[%s]", idarr[0]))
 		if id, err := strconv.Atoi(idarr[0]); err != nil {
 			return id, err
 		} else {
 			return id, nil
 		}
 	}
-	fmt.Println("Could not find userid", string(body))
-	return -1, fmt.Errorf("Could not find userid")
+	return -1, fmt.Errorf("Could not find userid in response body %s", string(body))
 }
 
 func createAndSignIn(t *testing.T, engine *gin.Engine, username string, password string) (*http.Cookie, int) {
@@ -198,7 +195,6 @@ func apiCreateMessage(t *testing.T, engine *gin.Engine, cookie *http.Cookie, mes
 		Expect(t).
 		End()
 	id, _ := getIdFromResponse(*result.Response)
-	fmt.Println("messageid from response", id)
 	return id
 }
 func testSignoutReq(t *testing.T, engine *gin.Engine, cookie *http.Cookie) {

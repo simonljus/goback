@@ -325,8 +325,10 @@ func createEngine() *gin.Engine {
 	authorizedMessage.DELETE("/:messageid", deleteMessageReq)
 	return r
 }
-func main() {
-
+func StartServer() {
 	r := createEngine()
 	r.Run(fmt.Sprintf(":%d", PORTNUMBER))
+}
+func main() {
+	StartServer()
 }
