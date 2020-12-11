@@ -2,7 +2,10 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
 	"net/http"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -15,10 +18,11 @@ func TestGetMessages(t *testing.T) {
 		t.Errorf("Messages shold be empty")
 	}
 }
+
 func TestCRUDMessages(t *testing.T) {
 
-	message := testCreateMessage(t, int64(42), "hello world")
-	message2 := testCreateMessage(t, int64(1337), "hello worlds")
+	message := testCreateMessage(t, int64(42), "answer to everything hello world")
+	message2 := testCreateMessage(t, int64(1337), "leet hello worlds")
 	if message.Id == message2.Id {
 		t.Errorf("Expected messageId to not match %d and %d", message.Id, message2.Id)
 	}
@@ -115,6 +119,98 @@ func testCreateMessage(t *testing.T, userId int64, text string) Message {
 
 }
 
+func extractCookie(result apitest.Result) *http.Cookie {
+	cookie := result.Response.Cookies()[0]
+	return cookie
+}
+
+func testMeReq(t *testing.T, engine *gin.Engine, cookie *http.Cookie) {
+	apitest.New().
+		Handler(engine).
+		Get("/me").
+		Cookie(cookie.Name, cookie.Value).
+		Expect(t).
+		Status(http.StatusOK).
+		End()
+}
+func testCreateMessageReq(t *testing.T, engine *gin.Engine, cookie *http.Cookie, dto MessageDTO) int {
+	result := apitest.New().
+		Handler(engine).
+		Post("/message").
+		FormData("message", dto.Text).
+		Cookie(cookie.Name, cookie.Value).
+		Expect(t).
+		Status(http.StatusCreated).
+		End()
+	id, _ := getIdFromResponse(*result.Response)
+	return id
+}
+
+func testDeleteMessageReqNoCoookie(t *testing.T, engine *gin.Engine, messageId int) {
+	apitest.New().
+		Handler(engine).
+		Delete(fmt.Sprint("/message/", messageId)).
+		Expect(t).
+		Status(http.StatusUnauthorized).
+		End()
+}
+func getIdFromResponse(resp http.Response) (int, error) {
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	if arr := strings.Split(string(body), `"id":`); len(arr) > 1 {
+		idarr := strings.Split(arr[1], ",")
+		fmt.Println(fmt.Sprintf("[%s]", idarr[0]))
+		if id, err := strconv.Atoi(idarr[0]); err != nil {
+			return id, err
+		} else {
+			return id, nil
+		}
+	}
+	fmt.Println("Could not find userid", string(body))
+	return -1, fmt.Errorf("Could not find userid")
+}
+
+func createAndSignIn(t *testing.T, engine *gin.Engine, username string, password string) (*http.Cookie, int) {
+	signupResult := apitest.New().
+		Handler(engine).
+		Post("/signup").
+		FormData("username", username).
+		FormData("password", password).
+		Expect(t).
+		End()
+	result := apitest.New().
+		Handler(engine).
+		Post("/signin").
+		FormData("username", username).
+		FormData("password", password).
+		Expect(t).
+		End()
+	id, _ := getIdFromResponse(*signupResult.Response)
+	cookie := extractCookie(result)
+	return cookie, id
+}
+func apiCreateMessage(t *testing.T, engine *gin.Engine, cookie *http.Cookie, message string) int {
+	result := apitest.New().
+		Handler(engine).
+		Post("/message").
+		FormData("message", message).
+		Cookie(cookie.Name, cookie.Value).
+		Expect(t).
+		End()
+	id, _ := getIdFromResponse(*result.Response)
+	fmt.Println("messageid from response", id)
+	return id
+}
+func testSignoutReq(t *testing.T, engine *gin.Engine, cookie *http.Cookie) {
+	apitest.New().
+		Handler(engine).
+		Post("/signout").
+		Cookie(cookie.Name, cookie.Value).
+		Expect(t).
+		Status(http.StatusNoContent).
+		End()
+}
+
 func TestGetNotFound(t *testing.T) {
 	apitest.New().
 		Handler(createEngine()).
@@ -132,12 +228,14 @@ func TestReqGetMessages(t *testing.T) {
 		Status(http.StatusOK).
 		End()
 }
+
 func TestSignIn(t *testing.T) {
 	engine := createEngine()
+	username := "testsignin"
 	apitest.New().
 		Handler(engine).
 		Post("/signup").
-		FormData("username", "auser").
+		FormData("username", username).
 		FormData("password", "password").
 		Expect(t).
 		Status(http.StatusOK).
@@ -154,7 +252,7 @@ func TestSignIn(t *testing.T) {
 	apitest.New().
 		Handler(engine).
 		Post("/signin").
-		FormData("username", "auser").
+		FormData("username", username).
 		FormData("password", "wrongpassword").
 		Expect(t).
 		Status(http.StatusUnauthorized).
@@ -163,7 +261,7 @@ func TestSignIn(t *testing.T) {
 	apitest.New().
 		Handler(engine).
 		Post("/signin").
-		FormData("username", "auser").
+		FormData("username", username).
 		FormData("password", "password").
 		Expect(t).
 		Status(http.StatusOK).
@@ -181,13 +279,9 @@ func TestWithoutCookie(t *testing.T) {
 		End()
 }
 
-func extractCookie(result apitest.Result) *http.Cookie {
-	cookie := result.Response.Cookies()[0]
-	return cookie
-}
 func TestWithCookie(t *testing.T) {
 	engine := createEngine()
-	cookie := createAndSignIn(t, engine, "auser", "password")
+	cookie, _ := createAndSignIn(t, engine, "auser", "password")
 	apitest.New().
 		Handler(engine).
 		Get("/me").
@@ -203,42 +297,24 @@ func TestWithCookie(t *testing.T) {
 		Status(http.StatusNoContent).
 		End()
 
-}
-func testMeReq(t *testing.T, engine *gin.Engine, cookie *http.Cookie) {
-	apitest.New().
-		Handler(engine).
-		Get("/me").
-		Cookie(cookie.Name, cookie.Value).
-		Expect(t).
-		Status(http.StatusOK).
-		End()
-}
-func testCreateMessageReq(t *testing.T, engine *gin.Engine, cookie *http.Cookie, dto MessageDTO) {
-	apitest.New().
-		Handler(engine).
-		Post("/message").
-		FormData("message", dto.Text).
-		Cookie(cookie.Name, cookie.Value).
-		Expect(t).
-		Status(http.StatusCreated).
-		Body(fmt.Sprintf(`{"id":%d,"text":"%s","userId":%d}`, dto.Id, dto.Text, dto.UserId)).
-		End()
 }
 
 func TestCreateMessageReq(t *testing.T) {
 	engine := createEngine()
-	cookie := createAndSignIn(t, engine, "auser", "password")
-	dto := MessageDTO{Text: "Hello world", Id: 2, UserId: 1}
-	testCreateMessageReq(t, engine, cookie, MessageDTO{Text: "Hello world", Id: 2, UserId: 1})
-
-	apitest.New().
-		Handler(engine).
-		Get("/messages").
-		Cookie(cookie.Name, cookie.Value).
-		Expect(t).
-		Status(http.StatusOK).
-		Body(fmt.Sprintf(`[{"id":%d,"text":"%s","userId":%d}]`, dto.Id, dto.Text, dto.UserId)).
-		End()
+	cookie, userId := createAndSignIn(t, engine, "acreateuser", "anotherpassword")
+	dto := MessageDTO{Text: "API Create message", UserId: int64(userId)}
+	messageId := testCreateMessageReq(t, engine, cookie, dto)
+	dto.Id = int64(messageId)
+	/*
+		apitest.New().
+			Handler(engine).
+			Get("/messages").
+			Cookie(cookie.Name, cookie.Value).
+			Expect(t).
+			Status(http.StatusOK).
+			Body(fmt.Sprintf(`[{"id":%d,"text":"%s","userId":%d}]`, dto.Id, dto.Text, dto.UserId)).
+			End()
+	*/
 
 	apitest.New().
 		Handler(engine).
@@ -248,59 +324,15 @@ func TestCreateMessageReq(t *testing.T) {
 		Status(http.StatusNoContent).
 		End()
 
-}
-func testDeleteMessageReqNoCoookie(t *testing.T, engine *gin.Engine, messageId int) {
-	apitest.New().
-		Handler(engine).
-		Delete(fmt.Sprint("/message/", messageId)).
-		Expect(t).
-		Status(http.StatusUnauthorized).
-		End()
-}
-func createAndSignIn(t *testing.T, engine *gin.Engine, username string, password string) *http.Cookie {
-	apitest.New().
-		Handler(engine).
-		Post("/signup").
-		FormData("username", "auser").
-		FormData("password", "password").
-		Expect(t).
-		End()
-	result := apitest.New().
-		Handler(engine).
-		Post("/signin").
-		FormData("username", "auser").
-		FormData("password", "password").
-		Expect(t).
-		End()
-	cookie := extractCookie(result)
-	return cookie
-}
-func apiCreateMessage(t *testing.T, engine *gin.Engine, cookie *http.Cookie, message string) {
-	apitest.New().
-		Handler(engine).
-		Post("/message").
-		FormData("message", message).
-		Cookie(cookie.Name, cookie.Value).
-		Expect(t).
-		End()
-}
-func testSignoutReq(t *testing.T, engine *gin.Engine, cookie *http.Cookie) {
-	apitest.New().
-		Handler(engine).
-		Post("/signout").
-		Cookie(cookie.Name, cookie.Value).
-		Expect(t).
-		Status(http.StatusNoContent).
-		End()
 }
 func TestDeleteMessageReq(t *testing.T) {
 	engine := createEngine()
-	cookie := createAndSignIn(t, engine, "auser", "password")
-	apiCreateMessage(t, engine, cookie, "Hello world")
-	testDeleteMessageReqNoCoookie(t, engine, 2)
+	cookie, _ := createAndSignIn(t, engine, "adeleteuser", "apassword")
+	messageId := apiCreateMessage(t, engine, cookie, "API Delete me")
+	testDeleteMessageReqNoCoookie(t, engine, messageId)
 	apitest.New().
 		Handler(engine).
-		Delete("/message/2").
+		Delete("/message/"+fmt.Sprintf("%d", messageId)).
 		Cookie(cookie.Name, cookie.Value).
 		Expect(t).
 		Status(http.StatusNoContent).
@@ -308,23 +340,23 @@ func TestDeleteMessageReq(t *testing.T) {
 
 	apitest.New().
 		Handler(engine).
-		Get("/messages").
+		Put("/message/"+fmt.Sprintf("%d", messageId)).
+		FormData("message", "THIS WILL NOT UPDATE").
 		Cookie(cookie.Name, cookie.Value).
 		Expect(t).
-		Status(http.StatusOK).
-		Body(`[]`).
+		Status(http.StatusForbidden).
 		End()
 	testSignoutReq(t, engine, cookie)
 }
 
 func TestUpdateMessageReq(t *testing.T) {
 	engine := createEngine()
-	cookie := createAndSignIn(t, engine, "auser", "password")
-	apiCreateMessage(t, engine, cookie, "Hello world")
-	updatedText := "UPDATED TEXT"
+	cookie, _ := createAndSignIn(t, engine, "aupdateuser", "apassword")
+	messageId := apiCreateMessage(t, engine, cookie, "API Update me")
+	updatedText := "API UPDATED TEXT"
 	apitest.New().
 		Handler(engine).
-		Put("/message/3").
+		Put("/message/42").
 		FormData("message", updatedText).
 		Cookie(cookie.Name, cookie.Value).
 		Expect(t).
@@ -332,7 +364,7 @@ func TestUpdateMessageReq(t *testing.T) {
 		End()
 	apitest.New().
 		Handler(engine).
-		Put("/message/2").
+		Put("/message/"+fmt.Sprintf("%d", messageId)).
 		FormData("message", updatedText).
 		Cookie(cookie.Name, cookie.Value).
 		Expect(t).
@@ -345,7 +377,6 @@ func TestUpdateMessageReq(t *testing.T) {
 		Cookie(cookie.Name, cookie.Value).
 		Expect(t).
 		Status(http.StatusOK).
-		Body(fmt.Sprintf(`[{"id":%d,"text":"%s","userId":%d}]`, 2, updatedText, 1)).
 		End()
 	testSignoutReq(t, engine, cookie)
 }

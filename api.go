@@ -11,6 +11,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const PORTNUMBER = 9001
+
 type User struct {
 	Id        int64  `json:"id"`
 	Username  string `json:"username"`
@@ -324,6 +326,7 @@ func createEngine() *gin.Engine {
 	return r
 }
 func main() {
+
 	r := createEngine()
-	r.Run()
+	r.Run(fmt.Sprintf(":%d", PORTNUMBER))
 }
